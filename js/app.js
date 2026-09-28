@@ -14,14 +14,14 @@ const store = {
   set(k, v) { mem[k] = v; try { if (storeOK) localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } },
   del(k) { delete mem[k]; try { if (storeOK) localStorage.removeItem(k); } catch (e) { } }
 };
-const SAVE_KEY = 'imjin_war_save_v1';
-function saveGame() { store.set(SAVE_KEY, { v: 1, player: G.player, results: G.results, factors: G.factors, startedAt: G.startedAt, finishedAt: G.finishedAt, submitted: G.submitted }); }
+const SAVE_KEY = 'imjin_war_save_v2';
+function saveGame() { store.set(SAVE_KEY, { v: 2, player: G.player, results: G.results, essay: G.essay, startedAt: G.startedAt, finishedAt: G.finishedAt, submitted: G.submitted }); }
 function loadGame() { return store.get(SAVE_KEY); }
 
 const G = {
   player: { sid: '', name: '' }, stage: 0, phase: 'TITLE',
   results: Array(8).fill(null), retryUsed: Array(8).fill(false),
-  factors: ['', '', '', ''], submitted: false,
+  essay: '', submitted: false,
   startedAt: 0, finishedAt: 0, pick: null, order: []
 };
 function totalScore() { return G.results.reduce((a, r) => a + (r ? r.total : 0), 0); }
@@ -51,6 +51,13 @@ function mapPane() { return `<div class="map-panel"><div id="map-mount"></div><d
 function mountMapIfPresent() { const el = $('#map-mount'); if (el) { MapView.mount(el); MapView.update(G.stage); } }
 
 /* ---------- 화면들 ---------- */
+function drawTitleDeco() {
+  const cv = $('#tt-deco'); if (!cv) return;
+  const g = cv.getContext('2d'); g.setTransform(2, 0, 0, 2, 0, 0); g.clearRect(0, 0, 380, 170);
+  Spr.draw(g, 'sjs', 0, 0, 62, 158, 1.5, { shadow: 0.9 });
+  Spr.draw(g, 'shgb', 0, 6, 218, 160, 1.2);
+  Spr.draw(g, 'shpo', 0, 1, 338, 160, 0.9);
+}
 function showTitle() {
   G.phase = 'TITLE';
   const saved = loadGame();
@@ -58,6 +65,7 @@ function showTitle() {
   root(`
     ${topBar(false)}
     <div class="title-screen">
+      <div class="tt-bg"><div id="tt-map-mount"></div><canvas id="tt-deco" width="760" height="340" aria-hidden="true"></canvas></div>
       <div class="title-left">
         <h1>불멸의<br>7년<br>임진왜란</h1>
         <p class="title-sub">1592 ~ 1598 · 바다를 지키고, 땅을 되찾아라</p>
@@ -72,17 +80,20 @@ function showTitle() {
         </form>
       </div>
     </div>`);
+  const mapMount = $('#tt-map-mount');
+  if (mapMount) { MapView.mount(mapMount); mapMount.querySelectorAll('.layer').forEach(l => l.classList.add('on')); }
+  drawTitleDeco();
   $('#start-form').onsubmit = (e) => {
     e.preventDefault();
     G.player = { sid: $('#f-sid').value.trim(), name: $('#f-name').value.trim() };
     if (!G.player.sid || !G.player.name) return;
-    G.results = Array(8).fill(null); G.retryUsed = Array(8).fill(false); G.factors = ['', '', '', '']; G.submitted = false;
+    G.results = Array(8).fill(null); G.retryUsed = Array(8).fill(false); G.essay = ''; G.submitted = false;
     G.startedAt = Date.now(); G.finishedAt = 0; saveGame(); goStage(0);
   };
   const rb = $('#resume-btn');
   if (rb) rb.onclick = () => {
     G.player = saved.player; G.results = saved.results; G.retryUsed = Array(8).fill(false);
-    G.factors = saved.factors || ['', '', '', '']; G.submitted = !!saved.submitted;
+    G.essay = saved.essay || ''; G.submitted = !!saved.submitted;
     G.startedAt = saved.startedAt; G.finishedAt = saved.finishedAt;
     const next = G.results.findIndex(r => !r);
     if (next === -1) showReport(); else goStage(next);
@@ -248,39 +259,43 @@ function showReport() {
     <tbody>${STAGES.map((s, i) => `<tr><td>${i + 1}</td><td>${esc(s.worksheetDate)}</td><td><b>${esc(s.keyword.battle)}</b></td><td>${esc(s.keyword.who)}</td><td>${esc(s.keyword.meaning)}</td><td>${G.results[i] && G.results[i].quiz ? '○' : '×'}</td><td>${G.results[i] ? fmt(G.results[i].total) : '-'}</td></tr>`).join('')}</tbody></table>
     <h3>핵심 탐구 과제 <small>위 표와 게임 속 전투를 떠올리며 학습지에 답을 써 보세요</small></h3>
     <div class="rp-q">${INQUIRY.map((q, i) => `<div><b>Q${i + 1}. ${esc(q.q)}</b><span class="line"></span></div>`).join('')}</div>
-    <h3>임진왜란 승리요인 4가지</h3>
+    <h3>임진왜란 승리 요인</h3>
     <div class="rp-factors">
-      <p>게임에서 치른 8개의 전투를 떠올려 보세요. 조선이 7년 전쟁을 이겨 낼 수 있었던 <b>네 가지 요인</b>을 각 칸에 직접 써 보세요.</p>
-      ${[0,1,2,3].map(k => `<label class="factor-field"><span>${CIRC[k] || (k+1)+'.'}</span><input class="f-input" data-k="${k}" maxlength="60" placeholder="예: 조선 수군의 활약" value="${esc(G.factors[k] || '')}"></label>`).join('')}
+      <p>게임에서 치른 8개의 전투를 떠올려 보세요. 조선이 7년간의 전쟁을 이겨 낼 수 있었던 요인은 무엇이었을까요? 아래 칸에 자유롭게 서술해 보세요. (최소 20자)</p>
+      <textarea class="f-essay" id="f-essay" rows="7" maxlength="1500" placeholder="예: 이순신 장군이 이끈 수군의 활약으로 남해와 서해의 제해권을 지켜 전라도 곡창지대를 보호할 수 있었고, 전국 각지에서 일어난 의병과 승병이 왜군의 후방 보급로를 끊었다. 또한 명나라 원군이 참전하며 전세가 국제전으로 확대되어...">${esc(G.essay || '')}</textarea>
+      <div class="char-count" id="essay-count"></div>
     </div>
     <div class="submit-box">
       <h3>선생님께 제출하기</h3>
-      <p class="help">${Sync.enabled() ? '아래 버튼을 누르면 위에 적은 승리요인 4가지와 최종 점수가 선생님 구글 시트로 전송됩니다.' : '⚠ 아직 선생님 컴퓨터의 구글 시트 주소가 설정되지 않았습니다. (config.js 참고)'}</p>
+      <p class="help">${Sync.enabled() ? '아래 버튼을 누르면 위에 적은 승리 요인 서술과 최종 점수가 선생님 구글 시트로 전송됩니다.' : '⚠ 아직 선생님 컴퓨터의 구글 시트 주소가 설정되지 않았습니다. (config.js 참고)'}</p>
       <div id="submit-msg" class="submit-msg"></div>
       <div class="actions" style="justify-content:flex-start">
-        <button class="btn primary" id="submit-full">승리요인 + 점수 제출하기</button>
+        <button class="btn primary" id="submit-full">승리 요인 + 점수 제출하기</button>
         <button class="btn ghost" id="submit-score">점수만 다시 보내기</button>
         <button class="btn ghost" id="print-btn">인쇄 · PDF 저장</button>
         <button class="btn ghost" id="restart-btn">처음부터 다시 도전</button>
       </div>
     </div>
   </article></div>`);
-  document.querySelectorAll('.f-input').forEach(inp => inp.oninput = () => { G.factors[+inp.dataset.k] = inp.value; saveGame(); });
+  const essayInp = $('#f-essay'), countEl = $('#essay-count');
+  const updateCount = () => { countEl.textContent = `${essayInp.value.length} / 1500자`; };
+  updateCount();
+  essayInp.oninput = () => { G.essay = essayInp.value; saveGame(); updateCount(); };
   $('#print-btn').onclick = () => window.print();
   $('#restart-btn').onclick = () => { if (confirm('처음부터 다시 시작할까요? 지금까지의 진행은 사라집니다.')) { store.del(SAVE_KEY); showTitle(); } };
   const msg = $('#submit-msg');
   function setMsg(text, ok) { msg.textContent = text; msg.className = 'submit-msg ' + (ok ? 'ok' : 'err'); }
   $('#submit-full').onclick = async () => {
-    if (G.factors.some(f => !f.trim())) { setMsg('네 칸을 모두 채워 주세요.', false); return; }
+    if (!G.essay || G.essay.trim().length < 20) { setMsg('승리 요인을 조금 더 자세히 서술해 주세요. (최소 20자)', false); return; }
     setMsg('전송 중...', true);
-    const res = await Sync.submitFull({ sid: G.player.sid, name: G.player.name, total, factors: G.factors });
+    const res = await Sync.submitFull({ sid: G.player.sid, name: G.player.name, total, essay: G.essay });
     if (res.ok) { G.submitted = true; saveGame(); setMsg('제출 완료! 선생님 시트에 기록되었습니다.', true); }
     else setMsg('전송 실패: ' + (res.error || '알 수 없는 오류'), false);
   };
   $('#submit-score').onclick = async () => {
     setMsg('점수 전송 중...', true);
     const res = await Sync.submitScoreOnly({ sid: G.player.sid, name: G.player.name, total });
-    if (res.ok) setMsg('점수가 갱신되었습니다. (승리요인은 그대로 유지됩니다)', true);
+    if (res.ok) setMsg('점수가 갱신되었습니다. (승리 요인 서술은 그대로 유지됩니다)', true);
     else setMsg('전송 실패: ' + (res.error || '알 수 없는 오류'), false);
   };
 }

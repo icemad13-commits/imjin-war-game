@@ -2,30 +2,66 @@
    Stage 5~8
    ============================================================ */
 
-/* Stage 5. 평양성: 불랑기포 슬링샷 공성전 — 제한시간 30초 */
+/* Stage 5. 평양성: 불랑기포 슬링샷 공성전 — 제한시간 30초
+   [수정] ① 포루(적 목표물) 명중 판정을 "기둥 꼭대기 한 점"이 아니라
+             기둥 전체 몸통(사각형)으로 바꿔서, 눈으로 보기에 맞았는데도
+             부서지지 않던 문제를 고쳤습니다.
+          ② 조준 중에 실제 물리값 그대로 계산한 점선 예상 궤적(포물선)을
+             그려서, 당기는 각도에 따라 공이 곡선을 그리며 날아간다는 것을
+             눈으로 바로 확인할 수 있게 했습니다. */
 function gPyongyang() {
   const CAN = { x: 92, y: 352 }, GROUND = 366;
-  const towers = [{ x: 480, y: 300, alive: true, fall: 0 }, { x: 590, y: 260, alive: true, fall: 0 }, { x: 690, y: 300, alive: true, fall: 0 }];
-  const g = { dur: 30, t: 0, shots: 3, used: 0, state: 'aim', st: 0, aim: null, recoil: 0, fx: [], done: false, controls: { kind: 'drag', hint: '포를 드래그해 각도와 세기를 맞춘 뒤 손을 떼세요' } };
+  const MUZ = { x: CAN.x + 18, y: CAN.y - 10 };
+  const GRAV = 560, MAXPULL = 150, POWER = 3.5;
+  const towers = [
+    { x: 480, y: 300, w: 34, alive: true, fall: 0 },
+    { x: 590, y: 258, w: 34, alive: true, fall: 0 },
+    { x: 690, y: 300, w: 34, alive: true, fall: 0 }
+  ];
+  const g = { dur: 30, t: 0, shots: 3, used: 0, state: 'aim', st: 0, aim: null, recoil: 0, fx: [], done: false, controls: { kind: 'drag', hint: '화면을 눌러 당긴 뒤 손을 떼면 점선을 따라 포탄이 곡선으로 날아갑니다' } };
+
+  function towerHit(tw, bx, by) {
+    // 포루의 "몸통 전체"(기둥 폭 + 위쪽 여유분 ~ 지면)를 기준으로 판정합니다.
+    return bx > tw.x - tw.w / 2 - 12 && bx < tw.x + tw.w / 2 + 12 && by > tw.y - 16 && by < GROUND + 8;
+  }
+  function simulate(vx, vy) {
+    // 조준 중 미리보기용 점선 궤적. 실제 발사 물리(중력 포함)와 완전히 동일한 값으로 계산합니다.
+    const pts = []; let x = MUZ.x, y = MUZ.y, vx2 = vx, vy2 = vy;
+    for (let i = 0; i < 46; i++) {
+      const dt = 0.045; vy2 += GRAV * dt; x += vx2 * dt; y += vy2 * dt;
+      if (y > 398 || x > GW + 10 || x < -10) break;
+      pts.push([x, y]);
+    }
+    return pts;
+  }
   g.update = function (dt) {
     FX.step(g.fx, dt); if (g.state !== 'end') g.t = Math.min(g.dur, g.t + dt); g.st += dt; g.recoil = Math.max(0, g.recoil - dt);
     if (g.state === 'fly') {
-      const b = g.ball; b.vy += 600 * dt; b.x += b.vx * dt; b.y += b.vy * dt;
-      for (const tw of towers) if (tw.alive && dist(b.x, b.y, tw.x, tw.y) < 30) { tw.alive = false; g.state = 'end'; g.st = 0; FX.add(g.fx, { k: 'burst', x: tw.x, y: tw.y, r: 40, life: 0.6 }); FX.add(g.fx, { k: 'txt', s: '명중!', x: tw.x, y: tw.y - 40, size: 24, life: 0.8 }); }
-      if (g.state === 'fly' && (b.y > 398 || b.x > GW + 20 || b.x < -20)) { g.state = 'end'; g.st = 0; }
+      const b = g.ball; b.vy += GRAV * dt; b.x += b.vx * dt; b.y += b.vy * dt;
+      for (const tw of towers) if (tw.alive && towerHit(tw, b.x, b.y)) {
+        tw.alive = false; g.state = 'end'; g.st = 0;
+        FX.add(g.fx, { k: 'burst', x: tw.x, y: (tw.y + GROUND) / 2, r: 46, life: 0.6 });
+        FX.add(g.fx, { k: 'txt', s: '명중! 포루 파괴', x: tw.x, y: tw.y - 34, size: 22, life: 0.9 });
+      }
+      if (g.state === 'fly' && (b.y > 398 || b.x > GW + 20 || b.x < -20)) { g.state = 'end'; g.st = 0; FX.add(g.fx, { k: 'txt', s: '빗나감', x: GW / 2, y: 150, size: 20, c: '#FF9A88', life: 0.7 }); }
     } else if (g.state === 'end' && g.st > 0.6) { g.state = 'aim'; g.st = 0; g.aim = null; }
     towers.forEach(t => { if (!t.alive) t.fall += dt; });
     if (g.t >= g.dur && g.state === 'aim') { g.aim = null; g.state = 'end'; g.st = 0; FX.add(g.fx, { k: 'txt', s: '시간 종료!', x: GW / 2, y: 150, size: 30, life: 1.4 }); }
     const finished = towers.every(t => !t.alive) || g.used >= g.shots || g.t >= g.dur;
     if (finished && g.state !== 'fly' && g.st > 1.2) g.done = true;
   };
-  g.onDown = (x, y) => { if (g.state === 'aim' && g.used < g.shots && dist(x, y, CAN.x, CAN.y) < 70) g.aim = { sx: x, sy: y, x, y }; };
-  g.onMove = (x, y, down) => { if (down && g.aim) { g.aim.x = x; g.aim.y = y; } };
+  g.onDown = (x, y) => { if (g.state === 'aim' && g.used < g.shots && dist(x, y, CAN.x, CAN.y) < 90) g.aim = { ox: x, oy: y, dx: 0, dy: 0 }; };
+  g.onMove = (x, y, down) => {
+    if (!down || !g.aim) return;
+    const rx = x - g.aim.ox, ry = y - g.aim.oy, L = Math.min(MAXPULL, Math.hypot(rx, ry)) || 0, ang = Math.atan2(ry, rx);
+    g.aim.dx = Math.cos(ang) * L; g.aim.dy = Math.sin(ang) * L;
+  };
   g.onUp = () => {
     if (!g.aim || g.state !== 'aim') return;
-    const dx = g.aim.sx - g.aim.x, dy = g.aim.sy - g.aim.y, L = Math.hypot(dx, dy);
-    if (L < 12) { g.aim = null; return; }
-    const k = 6.4; g.ball = { x: CAN.x + 18, y: CAN.y - 10, vx: dx * k, vy: dy * k }; g.used++; g.state = 'fly'; g.st = 0; g.recoil = 0.3;
+    const L = Math.hypot(g.aim.dx, g.aim.dy);
+    if (L < 14) { g.aim = null; return; }
+    const vx = -g.aim.dx * POWER, vy = -g.aim.dy * POWER;
+    g.ball = { x: MUZ.x, y: MUZ.y, vx, vy }; g.used++; g.state = 'fly'; g.st = 0; g.recoil = 0.3; g.aim = null;
   };
   g.ui = () => ({});
   g.result = () => { const d = towers.filter(t => !t.alive).length; return { score: Math.min(1000, d * 300 + Math.max(0, g.shots - g.used) * 30), note: `격파한 포루 ${d}곳 · 사용한 포탄 ${g.used}발 · 남은 시간 ${Math.max(0, Math.ceil(g.dur - g.t))}초` }; };
@@ -34,14 +70,32 @@ function gPyongyang() {
     c.fillStyle = '#6B6558'; c.fillRect(430, GROUND - 66, 300, 66); c.fillStyle = '#585246'; for (let x = 430; x < 730; x += 30) c.fillRect(x, GROUND - 76, 20, 12);
     txt(c, '평양성', 580, GROUND - 78, { size: 18, align: 'center', serif: true, w: 900, color: '#EDE7D8' });
     towers.forEach((tw, i) => {
-      if (tw.alive) { c.fillStyle = '#7A6A50'; c.fillRect(tw.x - 16, tw.y, 32, GROUND - tw.y); drawSoldier(c, 'jp', 'shoot', tw.x, tw.y, 0.8, g.t, { flip: true, shadow: 0.5 }); }
-      else { const f = Math.min(1, tw.fall); c.save(); c.globalAlpha = 1 - f * 0.6; c.translate(tw.x, tw.y + f * 30); c.rotate(f * 0.7); c.fillStyle = '#5A4E3C'; c.fillRect(-16, 0, 32, 40); c.restore(); }
+      if (tw.alive) {
+        const pulse = 0.6 + 0.4 * Math.sin(g.t * 4 + i);
+        c.save(); c.globalAlpha = pulse * 0.8; c.strokeStyle = '#FF6A55'; c.lineWidth = 2.5; c.beginPath(); c.ellipse(tw.x, (tw.y + GROUND) / 2, tw.w / 2 + 14, (GROUND - tw.y) / 2 + 8, 0, 0, 7); c.stroke(); c.restore();
+        c.fillStyle = '#7A6A50'; c.fillRect(tw.x - tw.w / 2, tw.y, tw.w, GROUND - tw.y);
+        drawSoldier(c, 'jp', 'shoot', tw.x, tw.y, 0.8, g.t, { flip: true, shadow: 0.5 });
+        txt(c, '포루', tw.x, tw.y - 18, { size: 13, align: 'center', color: '#FFD7CE', stroke: C.ink, sw: 3 });
+      } else { const f = Math.min(1, tw.fall); c.save(); c.globalAlpha = 1 - f * 0.6; c.translate(tw.x, tw.y + f * 30); c.rotate(f * 0.7); c.fillStyle = '#5A4E3C'; c.fillRect(-tw.w / 2, 0, tw.w, 40); c.restore(); }
     });
     drawSoldier(c, 'js', 'right', 120, GROUND - 2, 0.9, g.t, { shadow: 0.6 }); drawSoldier(c, 'js', 'right', 176, GROUND + 6, 0.9, g.t + 1, { shadow: 0.6 });
+    if (g.aim) {
+      const vx = -g.aim.dx * POWER, vy = -g.aim.dy * POWER, pts = simulate(vx, vy);
+      // 예상 궤적을 작은 원(점선처럼 보이도록 한 칸씩 건너뛰어) 여러 개로 그립니다.
+      // (참고: 이 점들을 setLineDash가 걸린 길이-0 선분으로 그리면 브라우저에 따라
+      //  아예 안 보일 수 있어서, 실제로 채워진 원을 찍는 방식으로 확실히 그립니다.)
+      c.save(); c.fillStyle = 'rgba(226,194,115,.9)';
+      pts.forEach(([px, py], i) => { if (i % 2 === 0) { c.beginPath(); c.arc(px, py, 3.4, 0, 7); c.fill(); } });
+      c.restore();
+      c.strokeStyle = 'rgba(233,237,230,.7)'; c.lineWidth = 3; c.setLineDash([6, 6]);
+      c.beginPath(); c.moveTo(MUZ.x, MUZ.y); c.lineTo(MUZ.x + g.aim.dx, MUZ.y + g.aim.dy); c.stroke(); c.setLineDash([]);
+      c.fillStyle = C.gold2; c.beginPath(); c.arc(MUZ.x + g.aim.dx, MUZ.y + g.aim.dy, 8, 0, 7); c.fill();
+      const pw = Math.round(100 * Math.hypot(g.aim.dx, g.aim.dy) / MAXPULL);
+      txt(c, `당기는 힘 ${pw}%`, MUZ.x + g.aim.dx, MUZ.y + g.aim.dy - 20, { size: 14, align: 'center', color: C.gold2, stroke: C.ink, sw: 3 });
+    }
     c.save(); c.translate(CAN.x, CAN.y - g.recoil * 20);
     c.fillStyle = '#2E2A22'; c.beginPath(); c.moveTo(-20, 10); c.lineTo(20, 10); c.lineTo(10, -22); c.lineTo(-10, -22); c.closePath(); c.fill();
     c.restore();
-    if (g.aim) { c.strokeStyle = 'rgba(233,237,230,.7)'; c.lineWidth = 3; c.setLineDash([6, 6]); c.beginPath(); c.moveTo(g.aim.sx, g.aim.sy); c.lineTo(g.aim.x, g.aim.y); c.stroke(); c.setLineDash([]); c.fillStyle = C.gold2; c.beginPath(); c.arc(g.aim.x, g.aim.y, 8, 0, 7); c.fill(); }
     if (g.state === 'fly' && g.ball) { c.fillStyle = '#20242B'; c.beginPath(); c.arc(g.ball.x, g.ball.y, 8, 0, 7); c.fill(); }
     FX.draw(c, g.fx); topShade(c, 60, 0.4);
     for (let i = 0; i < g.shots; i++) { c.fillStyle = i < g.shots - g.used ? '#2E2A22' : 'rgba(46,42,34,.25)'; c.beginPath(); c.arc(24 + i * 24, 20, 8, 0, 7); c.fill(); }
@@ -88,14 +142,19 @@ function gHaengju() {
     const f = g.frenzy > 0 ? 0.35 : 1;
     if (name === 'rocket' && g.rc <= 0) {
       g.rc = RCD * f; gain('rocket');
+      // 신기전은 방패부대(e.shield)를 절대 죽이지 못합니다 - 아래 필터에서 항상 제외됩니다.
       const targets = g.enemies.filter(e => !e.dead && !e.shield && e.y < ZONE && e.y > -10);
       for (let i = 0; i < 9; i++) FX.add(g.fx, { k: 'line', x0: 120 + i * 62, y0: FY + 4, x1: 80 + i * 70 + rand(-20, 20), y1: rand(40, ZONE), life: 0.5, c: '#FFD27A', w: 3 });
       targets.forEach(e => { e.dead = true; e.dieT = 0; g.kills++; FX.add(g.fx, { k: 'burst', x: e.x, y: e.y - 20, r: 26, life: 0.45 }); });
       if (targets.length) FX.add(g.fx, { k: 'txt', s: `신기전 +${targets.length}`, x: GW / 2, y: 120, size: 20, life: 0.8 });
+      // 신기전 사거리 안에 방패부대가 있었다면, 맞고도 멀쩡하다는 것을 눈으로 확실히 보여줍니다.
+      const shieldedInRange = g.enemies.filter(e => !e.dead && e.shield && e.y < ZONE && e.y > -10);
+      shieldedInRange.forEach(e => { FX.add(g.fx, { k: 'txt', s: '무효!', x: e.x, y: e.y - 46, size: 18, c: '#9FD1FF', life: 0.7 }); FX.add(g.fx, { k: 'burst', x: e.x, y: e.y - 10, r: 16, c: '#5F9FE0', life: 0.35 }); });
       const shielded = g.enemies.some(e => !e.dead && e.shield && e.y < ZONE + 40);
-      if (shielded) FX.add(g.fx, { k: 'txt', s: '방패부대는 신기전이 안 통해요!', x: GW / 2, y: 150, size: 16, c: '#9FD1FF', life: 0.9 });
+      if (shielded) FX.add(g.fx, { k: 'txt', s: '방패부대는 신기전이 안 통해요! 돌 던지기로 처치하세요', x: GW / 2, y: 150, size: 16, c: '#9FD1FF', life: 0.9 });
     } else if (name === 'stone' && g.sc <= 0) {
       g.sc = SCD * f; gain('stone');
+      // 돌 던지기는 방패부대를 포함해 가리지 않고 맞힙니다 (방패부대를 잡는 유일한 방법).
       const near = g.enemies.filter(e => !e.dead && e.y >= ZONE - 30).sort((a, b) => b.y - a.y).slice(0, g.frenzy > 0 ? 3 : 2);
       near.forEach(e => { e.dead = true; e.dieT = 0; g.kills++; FX.add(g.fx, { k: 'line', x0: e.x + rand(-60, 60), y0: FY + 10, x1: e.x, y1: e.y - 16, life: 0.25, c: '#D8D2C2', w: 5 }); FX.add(g.fx, { k: 'burst', x: e.x, y: e.y - 18, r: 20, life: 0.3 }); });
     }
@@ -135,7 +194,7 @@ function gHaengju() {
 /* Stage 7. 명량: 울돌목 조류 서바이벌 — 물살 1.2배, 왜선 절반만 화살 사격 */
 function gMyeongnyang() {
   const LM = 96, RM = GW - 96, FY = 372, ACC = 1.2, BASE = 62 * ACC, SURGE = 105 * ACC, PEN = 25;
-  const g = { dur: 30, t: 0, fleet: 13, sunk: 0, hits: 0, enemies: [], arrows: [], fx: [], spawnT: 0.9, done: false, over: false, overT: 0, curV: 0, curDir: 1, surge: 0, warn: false, flips: [6, 12.5, 19, 25.5], fi: 0, left: false, right: false, flag: { x: GW / 2, vx: 0, inv: 0, cool: 0.4, hurt: 0 }, controls: { kind: 'steer' } };
+  const g = { dur: 30, t: 0, fleet: 13, sunk: 0, hits: 0, wallHits: 0, enemies: [], arrows: [], fx: [], spawnT: 0.9, done: false, over: false, overT: 0, curV: 0, curDir: 1, surge: 0, warn: false, flips: [6, 12.5, 19, 25.5], fi: 0, left: false, right: false, flag: { x: GW / 2, vx: 0, inv: 0, cool: 0.4, hurt: 0, wallCd: 0 }, controls: { kind: 'steer' } };
   const marks = []; for (let i = 0; i < 40; i++) marks.push({ x: rand(LM, RM), y: rand(0, GH), l: rand(14, 30) });
   const shoreL = [], shoreR = []; for (let y = 0; y <= GH + 20; y += 20) { shoreL.push(LM - rand(0, 24)); shoreR.push(RM + rand(0, 24)); }
   function sink(e) { if (e.sink) return; e.sink = 0.001; g.sunk++; }
@@ -151,7 +210,7 @@ function gMyeongnyang() {
     g.curV += (g.curDir * (g.surge > 0 ? SURGE : BASE) - g.curV) * Math.min(1, dt * 2.5);
     marks.forEach(m => { m.x += g.curV * dt * 1.2; m.y += 20 * dt; if (m.x < LM - 10) m.x = RM; if (m.x > RM + 10) m.x = LM; if (m.y > GH) m.y = 0; });
     g.spawnT -= dt;
-    if (g.spawnT <= 0) { g.spawnT = rand(0.7, 1.0) * (1 - 0.15 * p); g.enemies.push({ x: rand(LM + 34, RM - 34), y: -40, vy: rand(62, 96), k: rand(0.45, 1.7), f: rand(0.8, 1.8), ph: rand(0, 6), sink: 0, canShoot: Math.random() < 0.5, shootT: rand(2.0, 4.0), aim: 0, flash: 0 }); }
+    if (g.spawnT <= 0) { g.spawnT = rand(0.7, 1.0) * (1 - 0.15 * p); g.enemies.push({ x: rand(LM + 34, RM - 34), y: -40, vy: rand(62, 96), k: rand(0.45, 1.7), f: rand(0.8, 1.8), ph: rand(0, 6), sink: 0, canShoot: Math.random() < 0.5, shootT: rand(1.0, 2.0), aim: 0, flash: 0 }); }
     const mult = g.surge > 0 ? 2.2 : 1;
     for (const e of g.enemies) {
       if (e.sink) { e.sink += dt; continue; }
@@ -160,14 +219,23 @@ function gMyeongnyang() {
       e.flash = Math.max(0, e.flash - dt);
       if (e.canShoot) {
         if (e.aim > 0) { e.aim -= dt; if (e.aim <= 0) { const tx = f.x + f.vx * 0.35, ty = FY, d = dist(e.x, e.y, tx, ty) || 1; g.arrows.push({ x: e.x, y: e.y + 10, vx: (tx - e.x) / d * 215, vy: (ty - e.y) / d * 215 }); e.flash = 0.25; } }
-        else { e.shootT -= dt; if (e.shootT <= 0 && e.y > 30 && e.y < FY - 110) { e.aim = 0.45; e.shootT = rand(3.4, 5.2); } }
+        else { e.shootT -= dt; if (e.shootT <= 0 && e.y > 30 && e.y < FY - 110) { e.aim = 0.45; e.shootT = rand(1.7, 2.6); } }
       }
     }
     const alive = g.enemies.filter(e => !e.sink);
     for (let i = 0; i < alive.length; i++) for (let j = i + 1; j < alive.length; j++) { const a = alive[i], b = alive[j]; if (dist(a.x, a.y, b.x, b.y) < 34) { sink(a); sink(b); FX.add(g.fx, { k: 'burst', x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, r: 36, life: 0.5 }); } }
     g.enemies = g.enemies.filter(e => e.sink < 0.7 && e.y < GH + 50);
     const dir = (g.right ? 1 : 0) - (g.left ? 1 : 0);
-    f.vx += (dir * 190 - f.vx) * Math.min(1, dt * 6); f.x = clamp(f.x + (f.vx + g.curV * 0.5) * dt, LM + 20, RM - 20); f.inv = Math.max(0, f.inv - dt); f.hurt = Math.max(0, f.hurt - dt); f.cool -= dt;
+    f.vx += (dir * 190 - f.vx) * Math.min(1, dt * 6);
+    const desiredX = f.x + (f.vx + g.curV * 0.5) * dt, hitWall = desiredX < LM + 20 || desiredX > RM - 20;
+    f.x = clamp(desiredX, LM + 20, RM - 20);
+    f.wallCd = Math.max(0, f.wallCd - dt);
+    if (hitWall && f.wallCd <= 0) {
+      f.wallCd = 0.8; g.wallHits++; f.hurt = Math.max(f.hurt, 0.35);
+      FX.add(g.fx, { k: 'txt', s: `벽에 부딪혔다! -${PEN}점`, x: f.x, y: FY - 56, size: 20, c: '#FF8E7A', life: 1.0 });
+      FX.add(g.fx, { k: 'burst', x: f.x, y: FY, r: 30, life: 0.4 });
+    }
+    f.inv = Math.max(0, f.inv - dt); f.hurt = Math.max(0, f.hurt - dt); f.cool -= dt;
     for (const a of g.arrows) {
       a.x += a.vx * dt; a.y += a.vy * dt;
       if (f.hurt <= 0 && Math.abs(a.x - f.x) < 16 && Math.abs(a.y - FY) < 30) { a.gone = true; g.hits++; f.hurt = 0.6; FX.add(g.fx, { k: 'txt', s: `화살 명중! -${PEN}점`, x: f.x, y: FY - 56, size: 20, c: '#FF8E7A', life: 1.0 }); }
@@ -181,7 +249,7 @@ function gMyeongnyang() {
   const setSide = (x) => { g.left = x < GW / 2; g.right = x >= GW / 2; };
   g.onDown = (x) => setSide(x); g.onMove = (x, y, down) => { if (down) setSide(x); }; g.onUp = () => { g.left = false; g.right = false; };
   g.ui = () => ({});
-  g.result = () => ({ score: clamp(g.sunk * 34 + g.fleet * 10 - g.hits * PEN, 0, 1000), note: `격침 ${g.sunk}척 · 남은 전선 ${g.fleet}척` + (g.hits ? ` · 화살 ${g.hits}회 맞음(-${g.hits * PEN})` : '') });
+  g.result = () => ({ score: clamp(g.sunk * 34 + g.fleet * 10 - g.hits * PEN - g.wallHits * PEN, 0, 1000), note: `격침 ${g.sunk}척 · 남은 전선 ${g.fleet}척` + (g.hits ? ` · 화살 ${g.hits}회 맞음(-${g.hits * PEN})` : '') + (g.wallHits ? ` · 벽 충돌 ${g.wallHits}회(-${g.wallHits * PEN})` : '') });
   g.draw = function (c) {
     if (!Spr.bg(c, 'bgSea', { px: 0.5, py: 0.5 })) vgrad(c, 0, 0, GW, GH, '#12475A', '#0C3242');
     c.fillStyle = 'rgba(6,42,66,.42)'; c.fillRect(0, 0, GW, GH);
@@ -203,11 +271,13 @@ function gMyeongnyang() {
     if (!Spr.draw(c, 'shpo', 0, 0, f.x, FY, 0.72, { anchor: 'c', alpha: (f.inv > 0 || f.hurt > 0) && Math.floor(g.t * 12) % 2 === 0 ? 0.4 : 1 })) shipVec(c, f.x, FY, 0.7, 1, {});
     FX.draw(c, g.fx);
     txt(c, `격침 ${g.sunk}`, 14, 28, { size: 20, stroke: C.ink });
-    if (g.hits) txt(c, `화살 ${g.hits}회 맞음 -${g.hits * PEN}`, 14, 60, { size: 15, color: '#FF9A88', stroke: C.ink, sw: 4 });
+    let hy = 60;
+    if (g.hits) { txt(c, `화살 ${g.hits}회 맞음 -${g.hits * PEN}`, 14, hy, { size: 15, color: '#FF9A88', stroke: C.ink, sw: 4 }); hy += 22; }
+    if (g.wallHits) { txt(c, `벽 충돌 ${g.wallHits}회 -${g.wallHits * PEN}`, 14, hy, { size: 15, color: '#FF9A88', stroke: C.ink, sw: 4 }); hy += 22; }
     const s = Math.sign(g.curV) || 1, cx = GW / 2; c.fillStyle = g.warn ? '#FFB3A3' : 'rgba(255,255,255,.95)';
     c.beginPath(); c.moveTo(cx + s * 30, 20); c.lineTo(cx + s * 10, 8); c.lineTo(cx + s * 10, 32); c.closePath(); c.fill();
     for (let i = 0; i < 13; i++) { const ok = i < g.fleet; c.globalAlpha = ok ? 1 : 0.22; if (!Spr.draw(c, 'shpo', 0, 1, GW - 22 - i * 24, 24, 0.2, {})) shipVec(c, GW - 22 - i * 24, 24, 0.2, 1, {}); c.globalAlpha = 1; }
-    bar(c, 14, 40 + (g.hits ? 26 : 0), 190, 8, 1 - g.t / g.dur, C.gold);
+    bar(c, 14, 40 + (g.hits ? 22 : 0) + (g.wallHits ? 22 : 0), 190, 8, 1 - g.t / g.dur, C.gold);
     if (g.warn) { c.fillStyle = 'rgba(196,67,47,.12)'; c.fillRect(0, 0, GW, GH); txt(c, '곧 물살이 바뀝니다!', GW / 2, 130, { size: 28, align: 'center', serif: true, w: 900, stroke: C.ink, sw: 6, color: '#FFD7CE' }); }
     if (g.over) { c.fillStyle = 'rgba(15,26,40,.65)'; c.fillRect(0, 0, GW, GH); txt(c, g.fleet > 0 ? '울돌목을 지켜 냈습니다' : '함대가 흩어졌습니다', GW / 2, 220, { size: 32, serif: true, w: 900, align: 'center' }); }
   };

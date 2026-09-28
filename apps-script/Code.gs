@@ -7,10 +7,17 @@
    ADMIN_KEY 한 줄뿐입니다.
 
    이 스크립트가 하는 일 (한 줄 요약):
-   - 학생이 [승리요인 + 점수 제출하기]를 누르면 -> 시트에 한 줄로 기록(같은 학번이면 덮어쓰기)
-   - 학생이 [점수만 다시 보내기]를 누르면 -> 그 학생 줄의 점수만 바꾸고 승리요인은 그대로 둠
+   - 학생이 [승리 요인 + 점수 제출하기]를 누르면 -> 시트에 한 줄로 기록(같은 학번이면 덮어쓰기)
+   - 학생이 [점수만 다시 보내기]를 누르면 -> 그 학생 줄의 점수만 바꾸고 승리 요인 서술은 그대로 둠
    - 앱 상단 [순위표]를 누르면 -> 점수 높은 순으로 정렬해서 보여줌
    - 선생님이 [교사용] 화면에서 [전체 기록 초기화]를 누르면 -> 시트의 기록을 모두 지움
+
+   ※ 업데이트 안내: 이전 버전에서는 "승리요인 1~4"를 4칸으로 나눠 받았지만,
+   이번 버전부터는 한 칸의 서술형 글로 받도록 바뀌었습니다. 이미 이전
+   버전으로 시트를 써 오고 있었다면, 이 코드를 새로 붙여넣고 재배포하기
+   전에 시트의 "기록" 탭 이름을 "기록(이전)" 등으로 바꿔 두세요. 그러면
+   이 스크립트가 새 이름("기록")의 탭을 새로 만들어서 이전 기록과 섞이지
+   않습니다.
    ============================================================ */
 
 /* 앱의 config.js에 있는 ADMIN_PIN과 반드시 똑같이 맞춰 주세요.
@@ -20,16 +27,16 @@ const ADMIN_KEY = '1592';
 /* 기록이 저장될 시트 이름. 시트 탭 이름을 바꾸고 싶다면 이 값도 함께 바꾸세요. */
 const SHEET_NAME = '기록';
 
-/* 시트의 열 순서 (A~I열) */
+/* 시트의 열 순서 (A~F열) */
 const COLS = {
   SID: 1,        // A: 학번
   NAME: 2,       // B: 이름
-  F1: 3, F2: 4, F3: 5, F4: 6,  // C~F: 승리요인 1~4
-  TOTAL: 7,      // G: 최종 점수
-  SUBMITTED: 8,  // H: 최초 제출 시각
-  UPDATED: 9     // I: 마지막 수정 시각
+  ESSAY: 3,      // C: 승리 요인 서술
+  TOTAL: 4,      // D: 최종 점수
+  SUBMITTED: 5,  // E: 최초 제출 시각
+  UPDATED: 6     // F: 마지막 수정 시각
 };
-const HEADER = ['학번', '이름', '승리요인1', '승리요인2', '승리요인3', '승리요인4', '점수', '최초제출시각', '최종수정시각'];
+const HEADER = ['학번', '이름', '승리 요인 서술', '점수', '최초제출시각', '최종수정시각'];
 
 /* ---------- 공통 도우미 ---------- */
 function getSheet_() {
@@ -98,28 +105,28 @@ function doPost(e) {
   }
 }
 
-/* 승리요인 4가지 + 점수를 함께 제출 (같은 학번이면 기존 줄을 덮어씁니다) */
+/* 승리 요인 서술 + 점수를 함께 제출 (같은 학번이면 기존 줄을 덮어씁니다) */
 function handleSubmit_(sheet, data) {
   const sid = String(data.sid || '').trim();
   const name = String(data.name || '').trim();
   const total = Number(data.total) || 0;
-  const factors = Array.isArray(data.factors) ? data.factors : ['', '', '', ''];
+  const essay = String(data.essay || '').trim();
   if (!sid || !name) return json_({ ok: false, error: '학번과 이름이 필요합니다.' });
 
   const row = findRowBySid_(sheet, sid);
   const now = nowStr_();
   if (row === -1) {
-    sheet.appendRow([sid, name, factors[0] || '', factors[1] || '', factors[2] || '', factors[3] || '', total, now, now]);
+    sheet.appendRow([sid, name, essay, total, now, now]);
   } else {
     sheet.getRange(row, COLS.NAME).setValue(name);
-    sheet.getRange(row, COLS.F1, 1, 4).setValues([[factors[0] || '', factors[1] || '', factors[2] || '', factors[3] || '']]);
+    sheet.getRange(row, COLS.ESSAY).setValue(essay);
     sheet.getRange(row, COLS.TOTAL).setValue(total);
     sheet.getRange(row, COLS.UPDATED).setValue(now);
   }
   return json_({ ok: true });
 }
 
-/* 점수만 갱신 (승리요인 4가지는 절대 건드리지 않음) */
+/* 점수만 갱신 (승리 요인 서술은 절대 건드리지 않음) */
 function handleUpdateScore_(sheet, data) {
   const sid = String(data.sid || '').trim();
   const name = String(data.name || '').trim();
@@ -129,8 +136,8 @@ function handleUpdateScore_(sheet, data) {
   const row = findRowBySid_(sheet, sid);
   const now = nowStr_();
   if (row === -1) {
-    // 아직 승리요인을 제출한 적이 없는 학생 - 승리요인은 빈 칸으로 두고 점수만 먼저 기록합니다.
-    sheet.appendRow([sid, name, '', '', '', '', total, now, now]);
+    // 아직 승리 요인을 제출한 적이 없는 학생 - 서술 칸은 비워 두고 점수만 먼저 기록합니다.
+    sheet.appendRow([sid, name, '', total, now, now]);
   } else {
     sheet.getRange(row, COLS.TOTAL).setValue(total);
     sheet.getRange(row, COLS.UPDATED).setValue(now);

@@ -34,11 +34,11 @@ const Sync = (() => {
     }
   }
 
-  /* 전체 제출: 학번/이름/점수/승리요인 4가지를 함께 보냅니다. */
-  function submitFull({ sid, name, total, factors }) {
-    return post('submit', { sid, name, total, factors });
+  /* 전체 제출: 학번/이름/점수/승리 요인 서술을 함께 보냅니다. */
+  function submitFull({ sid, name, total, essay }) {
+    return post('submit', { sid, name, total, essay });
   }
-  /* 점수만 보내기: 같은 학번의 승리요인 기록은 그대로 두고 점수만 갱신합니다. */
+  /* 점수만 보내기: 같은 학번의 승리 요인 서술은 그대로 두고 점수만 갱신합니다. */
   function submitScoreOnly({ sid, name, total }) {
     return post('updateScore', { sid, name, total });
   }
